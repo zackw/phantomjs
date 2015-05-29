@@ -9,9 +9,10 @@ Packaging for Linux
 
 Linux building/packaging is best done in a container to ensure
 isolation.  We use [Docker](https://www.docker.com/) to automate the
-process. Please see the [Docker documentation](https://docs.docker.com/)
-for instructions on installing Docker. For OS X or Windows host,
-please use [Docker Toolbox](https://www.docker.com/docker-toolbox).
+process.  Please see the [Docker documentation](https://docs.docker.com/)
+for instructions on installing Docker.  You can use
+[Docker Toolbox](https://www.docker.com/docker-toolbox)
+to run a Linux container on an OS X or Windows host.
 
 Once you have Docker installed, run these commands from the top level
 of the PhantomJS source repository:
@@ -30,7 +31,6 @@ For the 32-bit version:
 
 The built binary will be extracted out of the container and copied to
 the current directory.
-
 
 Packaging for OS X
 ------------------
