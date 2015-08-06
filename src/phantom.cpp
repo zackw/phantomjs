@@ -57,8 +57,6 @@ static Phantom* phantomInstance = NULL;
 // private:
 Phantom::Phantom(QObject* parent)
     : QObject(parent)
-    , m_terminated(false)
-    , m_returnValue(0)
     , m_filesystem(0)
     , m_system(0)
     , m_childprocess(0)
@@ -82,20 +80,17 @@ void Phantom::init()
         Terminal::instance()->cout("");
         Terminal::instance()->cout("Documentation can be found at the web site, http://phantomjs.org.");
         Terminal::instance()->cout("");
-        m_terminated = true;
-        return;
+        ::exit(0);
     }
 
     if (m_config.versionFlag()) {
-        m_terminated = true;
         Terminal::instance()->cout(QString("%1").arg(PHANTOMJS_VERSION_STRING));
-        return;
+        ::exit(0);
     }
 
     if (!m_config.unknownOption().isEmpty()) {
         Terminal::instance()->cerr(m_config.unknownOption());
-        m_terminated = true;
-        return;
+        ::exit(2);
     }
 
     // Initialize the CookieJar
@@ -179,12 +174,8 @@ void Phantom::setOutputEncoding(const QString& encoding)
     Terminal::instance()->setEncoding(encoding);
 }
 
-bool Phantom::execute()
+void Phantom::execute()
 {
-    if (m_terminated) {
-        return false;
-    }
-
 #ifndef QT_NO_DEBUG_OUTPUT
     qDebug() << "Phantom - execute: Configuration";
     const QMetaObject* configMetaObj = m_config.metaObject();
@@ -204,8 +195,7 @@ bool Phantom::execute()
         qDebug() << "Phantom - execute: Starting Remote WebDriver mode";
 
         if (!Utils::injectJsInFrame(":/ghostdriver/main.js", QString(), m_scriptFileEnc, QDir::currentPath(), m_page->mainFrame(), true)) {
-            m_returnValue = -1;
-            return false;
+            ::exit(1);
         }
     } else if (m_config.scriptFile().isEmpty()) {                       // REPL mode requested
         qDebug() << "Phantom - execute: Starting REPL mode";
@@ -216,7 +206,7 @@ bool Phantom::execute()
             QString errMessage = QString("Unsupported language: %1").arg(scriptLanguage);
             Terminal::instance()->cerr(errMessage);
             qWarning("%s", qPrintable(errMessage));
-            return false;
+            ::exit(1);
         }
 
         // Create the REPL: it will launch itself, no need to store this variable.
@@ -232,23 +222,14 @@ bool Phantom::execute()
                 qWarning() << "Can't bind remote debugging server to the port" << originalPort;
             }
             if (!Utils::loadJSForDebug(m_config.scriptFile(), m_config.scriptLanguage(), m_scriptFileEnc, QDir::currentPath(), m_page->mainFrame(), m_config.remoteDebugAutorun())) {
-                m_returnValue = -1;
-                return false;
+                ::exit(1);
             }
         } else {
             if (!Utils::injectJsInFrame(m_config.scriptFile(), m_config.scriptLanguage(), m_scriptFileEnc, QDir::currentPath(), m_page->mainFrame(), true)) {
-                m_returnValue = -1;
-                return false;
+                ::exit(1);
             }
         }
     }
-
-    return !m_terminated;
-}
-
-int Phantom::returnValue() const
-{
-    return m_returnValue;
 }
 
 QString Phantom::libraryPath() const
@@ -374,10 +355,6 @@ QObject* Phantom::createCallback()
 
 void Phantom::loadModule(const QString& moduleSource, const QString& filename)
 {
-    if (m_terminated) {
-        return;
-    }
-
     QString scriptSource =
         "(function(require, exports, module) {\n" +
         moduleSource +
@@ -398,10 +375,6 @@ bool Phantom::injectJs(const QString& jsFilePath)
     if (webdriverMode()) {
         pre = ":/ghostdriver/";
         qDebug() << "Phantom - injectJs: prepending" << pre;
-    }
-
-    if (m_terminated) {
-        return false;
     }
 
     return Utils::injectJsInFrame(pre + jsFilePath, libraryPath(), m_page->mainFrame());
@@ -520,32 +493,20 @@ void Phantom::clearCookies()
     m_defaultCookieJar->clearCookies();
 }
 
-
 // private:
 void Phantom::doExit(int code)
 {
     emit aboutToExit(code);
-    m_terminated = true;
-    m_returnValue = code;
 
-    // Iterate in reverse order so the first page is the last one scheduled for deletion.
-    // The first page is the root object, which will be invalidated when it is deleted.
-    // This causes an assertion to go off in BridgeJSC.cpp Instance::createRuntimeObject.
-    QListIterator<QPointer<WebPage> > i(m_pages);
-    i.toBack();
-    while (i.hasPrevious()) {
-        const QPointer<WebPage> page = i.previous();
+#ifndef QT_NO_DEBUG
+    // Clear all cached data before exiting, so it is not detected as
+    // leaked.
+    // FIXME: This probably isn't sufficient to clear data pinned by
+    // pages -- but destructing pages is unsafe without spinning the
+    // event loop, and that is precisely what we DON'T want to do
+    // right now.
+    QWebSettings::clearMemoryCaches();
+#endif
 
-        if (!page) {
-            continue;
-        }
-
-        // stop processing of JavaScript code by loading a blank page
-        page->mainFrame()->setUrl(QUrl(QStringLiteral("about:blank")));
-        // delay deletion into the event loop, direct deletion can trigger crashes
-        page->deleteLater();
-    }
-    m_pages.clear();
-    m_page = 0;
-    QApplication::instance()->exit(code);
+    ::exit(code);
 }

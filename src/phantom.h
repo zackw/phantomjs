@@ -71,8 +71,7 @@ public:
     QString outputEncoding() const;
     void setOutputEncoding(const QString& encoding);
 
-    bool execute();
-    int returnValue() const;
+    void execute();
 
     QString libraryPath() const;
     void setLibraryPath(const QString& libraryPath);
@@ -226,8 +225,6 @@ private:
 
     Encoding m_scriptFileEnc;
     WebPage* m_page;
-    bool m_terminated;
-    int m_returnValue;
     QString m_script;
     QVariantMap m_defaultPageSettings;
     FileSystem* m_filesystem;

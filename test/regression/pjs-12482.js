@@ -31,7 +31,7 @@ function loadHook (status) {
         setTimeout(function(){
             phantom.exit(0);
             sys.stdout.write("not ok " + (pages.length+1) +
-                             " should not get here # TODO\n");
+                             " should not get here\n");
         }, 50);
     }
 }

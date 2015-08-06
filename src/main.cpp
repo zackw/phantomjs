@@ -40,7 +40,7 @@
 #include <exception>
 #include <stdio.h>
 
-static int inner_main(int argc, char** argv)
+static void inner_main(int argc, char** argv)
 {
     QApplication app(argc, argv);
 
@@ -63,30 +63,21 @@ static int inner_main(int argc, char** argv)
     // Get the Phantom singleton
     Phantom* phantom = Phantom::instance();
 
-    // Start script execution
-    if (phantom->execute()) {
-        app.exec();
-    }
-
-    // End script execution: delete the phantom singleton and set
-    // execution return value
-    int retVal = phantom->returnValue();
-    delete phantom;
-
-#ifndef QT_NO_DEBUG
-    // Clear all cached data before exiting, so it is not detected as
-    // leaked.
-    QWebSettings::clearMemoryCaches();
-#endif
-
-    return retVal;
+    // Load whatever main program has been requested, then enter the
+    // Qt main loop.
+    phantom->execute();
+    app.exec();
 }
 
 int main(int argc, char** argv)
 {
     try {
         init_crash_handler();
-        return inner_main(argc, argv);
+        inner_main(argc, argv);
+
+        // app.exec() and therefore inner_main() do not return
+        // (phantom.exit() calls ::exit()).
+        abort();
 
         // These last-ditch exception handlers write to the C stderr
         // because who knows what kind of state Qt is in.  And they avoid
