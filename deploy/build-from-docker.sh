@@ -7,7 +7,7 @@
 # built.  That is, normally this script should be invoked (from
 # outside the container, but inside the git checkout) like so:
 #
-#  docker run phantomjs:2.1 -v $PWD:/src/phantomjs/volume [...other args...]
+#  docker run -v $PWD:/src/phantomjs/volume phantomjs:2.1 [...other args...]
 #
 # If all goes well, the built phantomjs executable will be copied to
 # /src/phantomjs/volume/bin, just as if you had built it on the host.
@@ -39,7 +39,7 @@ cd /src/phantomjs
 if [ ! -d volume/.git ] || \
    [ ! -f volume/build.py ] || \
    [ ! -f volume/src/phantom.cpp ]; then
-    echo "/src/phantomjs/volume does not appear to be a Git checkout of PhantomJS." >&2
+    echo "/src/phantomjs/volume is not a Git checkout of PhantomJS." >&2
     exit 2
 fi
 
@@ -49,7 +49,13 @@ cd volume
 cp ./build.py ../build
 git ls-files -z --exclude-standard src test | cpio -pdm0 --quiet ../build
 git submodule foreach --recursive --quiet \
-    'git ls-files -z --exclude-standard | cpio -pdm0 --quiet $toplevel/../build/$path'
+    'git ls-files -z --exclude-standard |
+        cpio -pdm0 --quiet $toplevel/../build/$path'
+
+# src/qt/qtbase/.git must exist, or else qtbase/configure will skip an
+# essential step and the build will fail.  It doesn't need to contain
+# anything.
+touch ../build/src/qt/qtbase/.git
 
 cd ../build
 
