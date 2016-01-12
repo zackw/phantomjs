@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head>
+  <meta charset="utf-8">
+  <title>random numbers</title>
+  <script>
+  window.onload = function () {
+    numbers = [];
+    while (numbers.length < 100) {
+      numbers.push(Math.round(Math.random() * 100));
+    }
+    document.getElementById('numbers').textContent = numbers.join(' ');
+  }
+  </script>
+<body>
+  <p>Some random numbers between 0 and 100:</p>
+  <p id="numbers"></p>
+</body>
+</html>
