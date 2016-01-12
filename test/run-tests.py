@@ -1,11 +1,23 @@
 #!/usr/bin/env python
 
+import os
+import sys
+
+base_path  = os.path.normpath(os.path.dirname(os.path.abspath(__file__)))
+lib_path   = os.path.join(base_path, 'lib')
+pylib_path = os.path.join(lib_path, 'py')
+sys.path.insert(1, pylib_path)
+if os.environ.get('PYTHONPATH'):
+    os.environ['PYTHONPATH'] = \
+        pylib_path + os.pathsep + os.environ['PYTHONPATH']
+else:
+    os.environ['PYTHONPATH'] = pylib_path
+
 import argparse
 import collections
 import errno
 import glob
 import imp
-import os
 import platform
 import posixpath
 import re
@@ -17,18 +29,20 @@ import ssl
 import string
 import cStringIO as StringIO
 import subprocess
-import sys
 import threading
 import time
 import traceback
 import urllib
 
 # All files matching one of these glob patterns will be run as tests.
+# .js files are PhantomJS controller scripts, wrapped by lib/testharness.js.
+# .py files are GhostDriver scripts, wrapped by lib/ghostharness.py.
 TESTS = [
     'basics/*.js',
     'module/*/*.js',
     'standards/*/*.js',
     'regression/*.js',
+    'ghost/*.py',
 ]
 
 TIMEOUT    = 7     # Maximum duration of PhantomJS execution (in seconds).
@@ -765,7 +779,8 @@ class TestRunner(object):
     def __init__(self, base_path, phantomjs_exe, options):
         self.base_path       = base_path
         self.cert_path       = os.path.join(base_path, 'lib/certs')
-        self.harness         = os.path.join(base_path, 'lib/testharness.js')
+        self.p_harness       = os.path.join(base_path, 'lib/testharness.js')
+        self.g_harness       = os.path.join(base_path, 'lib/ghostharness.py')
         self.phantomjs_exe   = phantomjs_exe
         self.verbose         = options.verbose
         self.debugger        = options.debugger
@@ -846,7 +861,32 @@ class TestRunner(object):
         else:
             return do_call_subprocess(command, verbose, stdin_data, timeout)
 
-    def run_test(self, script, name):
+
+    def run_ghostharness(self, script, pjs_args, timeout):
+        pjs_invocation = self.get_base_command(self.debugger)
+        pjs_invocation.extend(pjs_args)
+
+        command = [sys.executable,
+                   os.path.join(lib_path, 'ghostharness.py')]
+        if self.verbose:
+            command.append('--verbose={}'.format(self.verbose))
+        command.append(script)
+        command.extend(pjs_invocation)
+
+        if self.verbose >= 3:
+            sys.stdout.write("## running {}\n".format(" ".join(command)))
+
+        if self.debugger:
+            # FIXME: input-feed mode doesn't work with a debugger,
+            # because how do you tell the debugger that the *debuggee*
+            # needs to read from a pipe?
+            subprocess.call(command)
+            return 0, [], []
+        else:
+            return do_call_subprocess(command, self.verbose, [], timeout)
+
+
+    def run_phantom_test(self, script, name):
         script_args = []
         pjs_args = []
         use_harness = True
@@ -864,8 +904,6 @@ class TestRunner(object):
             if i+1 == len(tokens):
                 raise ValueError(what + "directive requires an argument")
 
-        if self.verbose >= 3:
-            sys.stdout.write(colorize("^", name) + ":\n")
         # Parse any directives at the top of the script.
         try:
             with open(script, "rt") as s:
@@ -935,7 +973,7 @@ class TestRunner(object):
 
         if use_harness:
             script_args.insert(0, script)
-            script = self.harness
+            script = self.p_harness
 
         if use_snakeoil:
             pjs_args.insert(0, '--ssl-certificates-path=' + self.cert_path)
@@ -952,6 +990,66 @@ class TestRunner(object):
         grp.parse(rc, out, err)
         return grp
 
+    def run_ghost_test(self, script, name):
+        pjs_args = []
+        use_snakeoil = True
+        timeout = TIMEOUT
+
+        def require_args(what, i, tokens):
+            if i+1 == len(tokens):
+                raise ValueError(what + "directive requires an argument")
+
+        # Parse any directives at the top of the script.
+        try:
+            with open(script, "rt") as s:
+                for line in s:
+                    # Ignore #! /path/to/interpreter.
+                    # Directives begin with ##! instead.
+                    if line.startswith("#!"):
+                        continue
+                    elif not line.startswith("##!"):
+                        break
+                    tokens = shlex.split(line[3:], comments=True)
+
+                    skip = False
+                    for i in range(len(tokens)):
+                        if skip:
+                            skip = False
+                            continue
+                        tok = tokens[i]
+                        if tok == "no-snakeoil":
+                            use_snakeoil = False
+                        elif tok == "timeout:":
+                            require_args(tok, i, tokens)
+                            timeout = float(tokens[i+1])
+                            if timeout <= 0:
+                                raise ValueError("timeout must be positive")
+                            skip = True
+                        elif tok == "phantomjs:":
+                            require_args(tok, i, tokens)
+                            pjs_args.extend(tokens[(i+1):])
+                            break
+                        else:
+                            raise ValueError("unrecognized directive: " + tok)
+
+        except Exception as e:
+            grp = TestGroup(name)
+            if hasattr(e, 'strerror') and hasattr(e, 'filename'):
+                grp.add_error([], '{} ({}): {}\n'
+                              .format(name, e.filename, e.strerror))
+            else:
+                grp.add_error([], '{} ({}): {}\n'
+                              .format(name, script, str(e)))
+            return grp
+
+        if use_snakeoil:
+            pjs_args.insert(0, '--ssl-certificates-path=' + self.cert_path)
+
+        rc, out, err = self.run_ghostharness(script, pjs_args, timeout)
+        grp = TAPTestGroup(name)
+        grp.parse(rc, out, err)
+        return grp
+
     def run_tests(self):
         start = time.time()
         base = self.base_path
@@ -963,16 +1061,27 @@ class TestRunner(object):
             test_glob = os.path.join(base, test_glob)
 
             for test_script in sorted(glob.glob(test_glob)):
-                tname = os.path.splitext(test_script)[0][nlen:]
+                tname, ext = os.path.splitext(test_script)
+                tname = tname[nlen:]
                 if self.to_run:
                     for to_run in self.to_run:
-                        if to_run in tname:
+                        if to_run in test_script:
                             break
                     else:
                         continue
 
                 any_executed = True
-                grp = self.run_test(test_script, tname)
+                if self.verbose >= 3:
+                    sys.stdout.write(colorize("^", tname) + ":\n")
+
+                if ext == '.js':
+                    grp = self.run_phantom_test(test_script, tname)
+                elif ext == '.py':
+                    grp = self.run_ghost_test(test_script, tname)
+                else:
+                    raise RuntimeError("{}: don't know how to run a {} script"
+                                       .format(test_script, ext))
+
                 grp.report_for_verbose_level(sys.stdout, self.verbose)
                 results.append(grp)
 
@@ -1010,7 +1119,7 @@ class TestRunner(object):
             return 1
 
 def init():
-    base_path = os.path.normpath(os.path.dirname(os.path.abspath(__file__)))
+    global base_path
 
     phantomjs_exe = os.path.normpath(base_path + '/../bin/phantomjs')
     if sys.platform in ('win32', 'cygwin'):
