@@ -574,6 +574,7 @@ class ParentTestRunner(BaseTestRunner):
     def handle_load_failure(self, script, exc_info):
         sys.stdout.write("# ERROR: While reading test script:\n")
         sys.stdout.write(format_exception(*exc_info, prefix='# '))
+        sys.stdout.flush()
         self.skip   = "error while reading test script"
         self.failed = True
 
@@ -585,11 +586,13 @@ class ParentTestRunner(BaseTestRunner):
                 sys.stdout.write("##" + line + "\n")
             else:
                 sys.stdout.write("## " + line + "\n")
+            sys.stdout.flush()
 
     def add_test(self, name, testfn, **properties):
         if name in self.tnames:
             sys.stdout.write("# ERROR: duplicate test name '{}'\n"
                              .format(name))
+            sys.stdout.flush()
             self.skip   = "duplicated test names"
             self.failed = True
             return
@@ -630,6 +633,7 @@ class ParentTestRunner(BaseTestRunner):
                 sys.stdout.write(
                     "# ERROR: default timeout must be positive, not {!r}\n"
                     .format(default_timeout))
+                sys.stdout.flush()
                 self.skip = "error in global setup"
                 self.failed = True
 
@@ -645,6 +649,7 @@ class ParentTestRunner(BaseTestRunner):
                     sys.stdout.write(
                         "# ERROR: not allowed in driver_args: "
                         + " ".join(not_allowed_keys) + "\n")
+                    sys.stdout.flush()
                     self.skip = "error in global setup"
                     self.failed = True
             else:
@@ -654,6 +659,7 @@ class ParentTestRunner(BaseTestRunner):
                     sys.stdout.write("# ERROR: " +
                                      format_exception(*sys.exc_info(),
                                                       prefix="# "))
+                    sys.stdout.flush()
                     self.skip = "error in global setup"
                     self.failed = True
 
@@ -663,6 +669,7 @@ class ParentTestRunner(BaseTestRunner):
                 sys.stdout.write(
                     "# ERROR: skip_if must be a callable, not {!r}"
                     .format(skip_if))
+                sys.stdout.flush()
                 self.skip = "error in global setup"
                 self.failed = True
 
@@ -672,6 +679,7 @@ class ParentTestRunner(BaseTestRunner):
                     sys.stdout.write(
                         "# ERROR: skip_if returned a truthy non-string, {!r}"
                         .format(why))
+                    sys.stdout.flush()
                     self.skip = "error in global setup"
                     self.failed = True
 
@@ -679,6 +687,7 @@ class ParentTestRunner(BaseTestRunner):
                     # we're already skipping, just log it
                     sys.stdout.write(
                         "## skip_if={!r}".format(why))
+                    sys.stdout.flush()
                 else:
                     self.skip = why
                     # this is *not* considered a failure
@@ -686,6 +695,7 @@ class ParentTestRunner(BaseTestRunner):
     def run_tests(self):
         if self.skip:
             sys.stdout.write("1..0 # SKIP: " + self.skip + "\n")
+            sys.stdout.flush()
 
             if self.failed:
                 sys.exit(1)
@@ -695,9 +705,11 @@ class ParentTestRunner(BaseTestRunner):
         if self.failed:
             sys.stdout.write("# ERROR: failed during setup with no message\n")
             sys.stdout.write("1..0 # SKIP\n")
+            sys.stdout.flush()
             sys.exit(1)
 
         sys.stdout.write("1..{}\n".format(self.ntests))
+        sys.stdout.flush()
 
         for t in self.tests:
             t.run_parent()
@@ -710,6 +722,7 @@ class ParentTestRunner(BaseTestRunner):
                         sys.stdout.write("#" + line + "\n")
                     else:
                         sys.stdout.write("# " + line + "\n")
+                sys.stdout.flush()
 
             prefix = None
             directive = ""
@@ -734,6 +747,7 @@ class ParentTestRunner(BaseTestRunner):
 
             sys.stdout.write("{}{} {}{}\n".format(prefix, t.number, t.name,
                                                   directive))
+            sys.stdout.flush()
 
         if self.failed:
             sys.exit(1)

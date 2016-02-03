@@ -45,9 +45,11 @@ TESTS = [
     'ghost/*.py',
 ]
 
-TIMEOUT    = 7     # Maximum duration of PhantomJS execution (in seconds).
-                   # This is a backstop; testharness.js imposes a shorter
-                   # timeout.  Both can be increased if necessary.
+P_TIMEOUT = 10  # Maximum execution time for native PhantomJS tests.
+G_TIMEOUT = 15  # Maximum execution time for Ghostdriver tests.
+# These are backstops; testharness.js and ghostharness.py impose shorter
+# timeouts.  Both can be increased if necessary.  Ghostdriver tests get
+# more time because they are slower.
 
 #
 # Utilities
@@ -834,7 +836,7 @@ class TestRunner(object):
 
     def run_phantomjs(self, script,
                       script_args=[], pjs_args=[], stdin_data=[],
-                      timeout=TIMEOUT, silent=False):
+                      timeout=P_TIMEOUT, silent=False):
         verbose  = self.verbose
         debugger = self.debugger
         if silent:
@@ -898,7 +900,7 @@ class TestRunner(object):
         stdout_xfail = False
         stderr_xfail = False
         rc_xfail = False
-        timeout = TIMEOUT
+        timeout = P_TIMEOUT
 
         def require_args(what, i, tokens):
             if i+1 == len(tokens):
@@ -993,7 +995,7 @@ class TestRunner(object):
     def run_ghost_test(self, script, name):
         pjs_args = []
         use_snakeoil = True
-        timeout = TIMEOUT
+        timeout = G_TIMEOUT
 
         def require_args(what, i, tokens):
             if i+1 == len(tokens):
